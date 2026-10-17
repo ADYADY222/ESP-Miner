@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
 #include "esp_err.h"
@@ -26,6 +27,7 @@ typedef enum {
     SCR_STATS,
     SCR_MINING,
     SCR_WIFI,
+    SCR_MATRIX,
     MAX_SCREENS,
 } screen_t;
 
@@ -54,7 +56,7 @@ static uint8_t osmu_logo_inverted_map[OSMU_LOGO_INVERTED_SIZE];
 static bool inverted_logos_ready;
 
 static lv_obj_t * screens[MAX_SCREENS];
-static int delays_ms[MAX_SCREENS] = {0, 0, 0, 0, 0, 1000, 3000, 3000, 10000, 10000, 10000, 10000};
+static int delays_ms[MAX_SCREENS] = {0, 0, 0, 0, 0, 1000, 3000, 3000, 10000, 10000, 10000, 10000, 10000};
 
 static int current_screen_time_ms;
 static int current_screen_delay_ms;
@@ -101,6 +103,12 @@ static lv_obj_t *stats_logo_label;
 static lv_obj_t *wifi_rssi_value_label;
 static lv_obj_t *wifi_signal_strength_label;
 static lv_obj_t *wifi_uptime_label;
+
+static lv_obj_t *matrix_banner_label;
+static lv_obj_t *matrix_mining_label;
+static lv_obj_t *matrix_thermal_label;
+static lv_obj_t *matrix_shares_label;
+static uint8_t matrix_frame;
 
 static lv_obj_t *notification_label;
 static lv_obj_t *identify_image;
@@ -530,6 +538,32 @@ static lv_obj_t * create_scr_wifi() {
     return scr;
 }
 
+static lv_obj_t * create_scr_matrix() {
+    lv_obj_t * scr = create_flex_screen(4);
+
+    matrix_banner_label = lv_label_create(scr);
+    lv_obj_set_width(matrix_banner_label, LV_HOR_RES);
+    lv_label_set_long_mode(matrix_banner_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_text(matrix_banner_label, "MATRIX // 10");
+
+    matrix_mining_label = lv_label_create(scr);
+    lv_obj_set_width(matrix_mining_label, LV_HOR_RES);
+    lv_label_set_long_mode(matrix_mining_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_text(matrix_mining_label, "H----G ---M -.--V");
+
+    matrix_thermal_label = lv_label_create(scr);
+    lv_obj_set_width(matrix_thermal_label, LV_HOR_RES);
+    lv_label_set_long_mode(matrix_thermal_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_text(matrix_thermal_label, "W--.- T-- VR--");
+
+    matrix_shares_label = lv_label_create(scr);
+    lv_obj_set_width(matrix_shares_label, LV_HOR_RES);
+    lv_label_set_long_mode(matrix_shares_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_label_set_text(matrix_shares_label, "F---- A-- R-- B------");
+
+    return scr;
+}
+
 static void scr_create_overlay()
 {
     identify_image = lv_img_create(lv_layer_top());
@@ -874,6 +908,47 @@ static void screen_update_cb(lv_timer_t * timer)
         current_rssi_value = rssi_value;
     }
 
+    if (get_current_screen() == SCR_MATRIX) {
+        static const char *matrix_frames[] = {
+            "MATRIX // 10",
+            "MATRIX // 01",
+            "MATRIX // 11",
+            "MATRIX // 00",
+        };
+
+        matrix_frame = (matrix_frame + 1) % (sizeof(matrix_frames) / sizeof(matrix_frames[0]));
+        if (module->show_new_block) {
+            lv_label_set_text(matrix_banner_label, "!! BLOCK FOUND !!");
+        } else if (module->mining_paused) {
+            lv_label_set_text(matrix_banner_label, "MATRIX // PAUSE");
+        } else {
+            lv_label_set_text(matrix_banner_label, matrix_frames[matrix_frame]);
+        }
+
+        lv_label_set_text_fmt(
+            matrix_mining_label,
+            "H%.0fG %.0fM %.2fV",
+            module->current_hashrate,
+            power_management->actual_frequency,
+            power_management->core_voltage / 1000.0f
+        );
+        lv_label_set_text_fmt(
+            matrix_thermal_label,
+            "W%.1f T%.0f VR%.0f",
+            power_management->power,
+            power_management->chip_temp_avg,
+            power_management->vr_temp
+        );
+        lv_label_set_text_fmt(
+            matrix_shares_label,
+            "F%u A%" PRIu64 " R%" PRIu64 " B%d",
+            power_management->fan_rpm,
+            module->shares_accepted,
+            module->shares_rejected,
+            GLOBAL_STATE->block_height
+        );
+    }
+
     uint32_t shares_accepted = module->shares_accepted;
     uint32_t shares_rejected = module->shares_rejected;
     uint32_t work_received = module->work_received;
@@ -977,6 +1052,7 @@ esp_err_t screen_start(GlobalState * global_state)
             screens[SCR_STATS] = create_scr_stats();
             screens[SCR_MINING] = create_scr_mining();
             screens[SCR_WIFI] = create_scr_wifi();
+            screens[SCR_MATRIX] = create_scr_matrix();
 
             scr_create_overlay();
 
