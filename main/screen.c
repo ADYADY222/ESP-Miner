@@ -110,6 +110,42 @@ static lv_obj_t *matrix_thermal_label;
 static lv_obj_t *matrix_shares_label;
 static uint8_t matrix_frame;
 
+#define MATRIX_INTRO_MS 6000
+
+static const char *matrix_intro_titles[] = {
+    "MATRIX // WAKE",
+    "MATRIX // LINK",
+    "MATRIX // SYNC",
+    "MATRIX // ONLINE",
+};
+
+static const char *matrix_rain_frames[][4] = {
+    {
+        "01 10 11 00 01 10",
+        "10 11 00 01 10 11",
+        "11 00 01 10 11 00",
+        "00 01 10 11 00 01",
+    },
+    {
+        "10 11 00 01 10 11",
+        "11 00 01 10 11 00",
+        "00 01 10 11 00 01",
+        "01 10 11 00 01 10",
+    },
+    {
+        "11 00 01 10 11 00",
+        "00 01 10 11 00 01",
+        "01 10 11 00 01 10",
+        "10 11 00 01 10 11",
+    },
+    {
+        "00 01 10 11 00 01",
+        "01 10 11 00 01 10",
+        "10 11 00 01 10 11",
+        "11 00 01 10 11 00",
+    },
+};
+
 static lv_obj_t *notification_label;
 static lv_obj_t *identify_image;
 
@@ -917,36 +953,44 @@ static void screen_update_cb(lv_timer_t * timer)
         };
 
         matrix_frame = (matrix_frame + 1) % (sizeof(matrix_frames) / sizeof(matrix_frames[0]));
+        const uint8_t rain_frame = matrix_frame % (sizeof(matrix_rain_frames) / sizeof(matrix_rain_frames[0]));
+        const uint8_t title_frame = matrix_frame % (sizeof(matrix_intro_titles) / sizeof(matrix_intro_titles[0]));
+
         if (module->show_new_block) {
             lv_label_set_text(matrix_banner_label, "!! BLOCK FOUND !!");
         } else if (module->mining_paused) {
             lv_label_set_text(matrix_banner_label, "MATRIX // PAUSE");
+        } else if (current_screen_time_ms < MATRIX_INTRO_MS) {
+            lv_label_set_text(matrix_banner_label, matrix_intro_titles[title_frame]);
+            lv_label_set_text(matrix_mining_label, matrix_rain_frames[rain_frame][0]);
+            lv_label_set_text(matrix_thermal_label, matrix_rain_frames[rain_frame][1]);
+            lv_label_set_text(matrix_shares_label, matrix_rain_frames[rain_frame][2]);
         } else {
             lv_label_set_text(matrix_banner_label, matrix_frames[matrix_frame]);
-        }
 
-        lv_label_set_text_fmt(
-            matrix_mining_label,
-            "H%.0fG %.0fM %.2fV",
-            module->current_hashrate,
-            power_management->actual_frequency,
-            power_management->core_voltage / 1000.0f
-        );
-        lv_label_set_text_fmt(
-            matrix_thermal_label,
-            "W%.1f T%.0f VR%.0f",
-            power_management->power,
-            power_management->chip_temp_avg,
-            power_management->vr_temp
-        );
-        lv_label_set_text_fmt(
-            matrix_shares_label,
-            "F%u A%" PRIu64 " R%" PRIu64 " B%d",
-            power_management->fan_rpm,
-            module->shares_accepted,
-            module->shares_rejected,
-            GLOBAL_STATE->block_height
-        );
+            lv_label_set_text_fmt(
+                matrix_mining_label,
+                "H%.0fG %.0fM %.2fV",
+                module->current_hashrate,
+                power_management->actual_frequency,
+                power_management->core_voltage / 1000.0f
+            );
+            lv_label_set_text_fmt(
+                matrix_thermal_label,
+                "W%.1f T%.0f VR%.0f",
+                power_management->power,
+                power_management->chip_temp_avg,
+                power_management->vr_temp
+            );
+            lv_label_set_text_fmt(
+                matrix_shares_label,
+                "F%u A%" PRIu64 " R%" PRIu64 " B%d",
+                power_management->fan_rpm,
+                module->shares_accepted,
+                module->shares_rejected,
+                GLOBAL_STATE->block_height
+            );
+        }
     }
 
     uint32_t shares_accepted = module->shares_accepted;
